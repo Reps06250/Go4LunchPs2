@@ -1,4 +1,4 @@
-package com.example.go4lunchps.ui.home;
+package com.example.go4lunchps.ui;
 
 import android.content.pm.PackageManager;
 import android.location.Location;
@@ -7,7 +7,6 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -18,9 +17,7 @@ import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.example.go4lunchps.R;
-import com.example.go4lunchps.retrofit.NearByApi;
-import com.example.go4lunchps.retrofit.models.NearByApiResponse;
-import com.example.go4lunchps.ui.dashboard.DashboardViewModel;
+import com.example.go4lunchps.Restaurant;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -30,22 +27,11 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
-import com.google.android.libraries.places.api.Places;
-import com.google.android.libraries.places.api.net.PlacesClient;
 
-import java.util.concurrent.TimeUnit;
-
-import okhttp3.OkHttpClient;
-import okhttp3.logging.HttpLoggingInterceptor;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
-import retrofit2.Retrofit;
-import retrofit2.converter.gson.GsonConverterFactory;
+import java.util.ArrayList;
 
 public class MapFragment extends Fragment implements OnMapReadyCallback {
 
@@ -54,11 +40,6 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
     private MapViewModel mapViewModel;
     private static final String TAG = MapFragment.class.getSimpleName();
     private CameraPosition cameraPosition;
-    NearByApi nearByApi = null;
-    private int PROXIMITY_RADIUS = 5000;
-
-    // The entry point to the Places API.
-    private PlacesClient placesClient;
 
     // The entry point to the Fused Location Provider.
     private FusedLocationProviderClient fusedLocationProviderClient;
@@ -73,10 +54,12 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
     // The geographical location where the device is currently located. That is, the last-known
     // location retrieved by the Fused Location Provider.
     private Location lastKnownLocation;
+    private  LatLng latLng;
 
     // Keys for storing activity state.
     private static final String KEY_CAMERA_POSITION = "camera_position";
     private static final String KEY_LOCATION = "location";
+
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
@@ -92,10 +75,6 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
             cameraPosition = savedInstanceState.getParcelable(KEY_CAMERA_POSITION);
         }
 
-        // Construct a PlacesClient
-        Places.initialize(getContext(), getString(R.string.key));
-        placesClient = Places.createClient(getContext());
-
         // Construct a FusedLocationProviderClient.
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(getContext());
 
@@ -104,6 +83,40 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
         mMapView.onCreate(savedInstanceState);
         mMapView.onResume(); // needed to get the map to display immediately
         mMapView.getMapAsync(this);
+
+        mapViewModel.getRestaurantMutableLiveData().observe(getViewLifecycleOwner(), new Observer<ArrayList<Restaurant>>() {
+            @Override
+            public void onChanged(@Nullable ArrayList<Restaurant> restaurantsList) {
+                gMap.clear();
+                for(Restaurant restaurant : restaurantsList){
+                    Log.e("restaurants", restaurant.name);
+                    MarkerOptions markerOptions = new MarkerOptions();
+                    // Location of Marker on Map
+                    markerOptions.position(restaurant.latLng);
+                    // Title for Marker
+                    markerOptions.title(restaurant.name + " : " + restaurant.vicinity);
+                    // Color or drawable for marker
+                    markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE));
+                    // add marker
+                    gMap.addMarker(markerOptions);
+                }
+                String string;
+                if(lastKnownLocation == null){string = "null";}
+                else{string = "OK";}
+                Log.e("lastKnowLocation", "onChangedList " + string);
+            }
+        });
+
+        mapViewModel.getQueryMutableLiveData().observe(getViewLifecycleOwner(), new Observer<String>() {
+            @Override
+            public void onChanged(@Nullable String query) {
+                String string;
+                if(lastKnownLocation == null){string = "null";}
+                else{string = "OK";}
+                Log.e("lastKnowLocation", "onChangedQuery " + string);
+                mapViewModel.filterPlaces();
+            }
+        });
         return rootView;
     }
 
@@ -121,10 +134,8 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
         gMap = googleMap;
         // Prompt the user for permission.
         getLocationPermission();
-
         // Turn on the My Location layer and the related control on the map.
         updateLocationUI();
-
         // Get the current location of the device and set the position of the map.
         getDeviceLocation();
     }
@@ -140,7 +151,6 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
                     new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION},
                     PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION);
             Log.e("Exception4", "locationPermissionGranted = false");
-
         }
     }
 
@@ -187,7 +197,6 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
          * Get the best and most recent location of the device, which may be null in rare
          * cases when a location is not available.
          */
-
         try {
             if (locationPermissionGranted) {
                 Log.d("exception6", String.valueOf(locationPermissionGranted));
@@ -199,11 +208,16 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
                             Log.d("exception5", "taskIsSuccessful");
                             // Set the map's camera position to the current location of the device.
                             lastKnownLocation = task.getResult();
+                            mapViewModel.setLastKnownLocation(lastKnownLocation);
+                            String string;
+                            if(lastKnownLocation == null){string = "null";}
+                            else{string = "OK";}
+                            Log.e("lastKnowLocation", "getDeviceLocation " + string);
+                            latLng = new LatLng(lastKnownLocation.getLatitude(), lastKnownLocation.getLongitude());
                             if (lastKnownLocation != null) {
-                                gMap.moveCamera(CameraUpdateFactory.newLatLngZoom(
-                                        new LatLng(lastKnownLocation.getLatitude(),
-                                                lastKnownLocation.getLongitude()), DEFAULT_ZOOM));
-                                findPlaces();
+                                gMap.clear();
+                                mapViewModel.findPlaces(lastKnownLocation);
+                                gMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM));
                             }
                         } else {
                             Log.d("exception5", "taskIsNotSuccessful");
@@ -219,68 +233,5 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
         } catch (SecurityException e)  {
             Log.e("Exception: %s", e.getMessage(), e);
         }
-    }
-
-
-    public void findPlaces(){
-        Call<NearByApiResponse> call = getApiService().getNearbyPlaces("restaurant", lastKnownLocation.getLatitude() + "," + lastKnownLocation.getLongitude(), PROXIMITY_RADIUS);
-
-        call.enqueue(new Callback<NearByApiResponse>() {
-            @Override
-            public void onResponse(Call<NearByApiResponse> call, Response<NearByApiResponse> response) {
-                try {
-                    gMap.clear();
-                    // This loop will go through all the results and add marker on each location.
-                    for (int i = 0; i < response.body().getResults().size(); i++) {
-                        Double lat = response.body().getResults().get(i).getGeometry().getLocation().getLat();
-                        Double lng = response.body().getResults().get(i).getGeometry().getLocation().getLng();
-                        String placeName = response.body().getResults().get(i).getName();
-                        String vicinity = response.body().getResults().get(i).getVicinity();
-                        MarkerOptions markerOptions = new MarkerOptions();
-                        LatLng latLng = new LatLng(lat, lng);
-                        // Location of Marker on Map
-                        markerOptions.position(latLng);
-                        // Title for Marker
-                        markerOptions.title(placeName + " : " + vicinity);
-                        // Color or drawable for marker
-                        markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE));
-                        // add marker
-                        Marker m = gMap.addMarker(markerOptions);
-                        // move map camera
-                        gMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
-                        gMap.animateCamera(CameraUpdateFactory.zoomTo(13));
-                    }
-                } catch (Exception e) {
-                    Log.d("onResponse", "There is an error");
-                    e.printStackTrace();
-                }
-            }
-
-            @Override
-            public void onFailure(Call<NearByApiResponse> call, Throwable t) {
-                Log.d("onFailure", t.toString());
-                t.printStackTrace();
-                PROXIMITY_RADIUS += 4000;
-            }
-        });
-    }
-
-    public NearByApi getApiService() {
-        if (nearByApi == null) {
-            HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
-            interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
-            OkHttpClient client = new OkHttpClient.Builder().retryOnConnectionFailure(true).readTimeout(80, TimeUnit.SECONDS).connectTimeout(80, TimeUnit.SECONDS).addInterceptor(interceptor).build();
-
-            Retrofit retrofit = new Retrofit.Builder().baseUrl("https://maps.googleapis.com/maps/").addConverterFactory(getApiConvertorFactory()).client(client).build();
-
-            nearByApi = retrofit.create(NearByApi.class);
-            return nearByApi;
-        } else {
-            return nearByApi;
-        }
-    }
-
-    private static GsonConverterFactory getApiConvertorFactory() {
-        return GsonConverterFactory.create();
     }
 }

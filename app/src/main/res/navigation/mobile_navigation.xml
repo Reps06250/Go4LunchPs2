@@ -7,15 +7,15 @@
 
     <fragment
         android:id="@+id/navigation_home"
-        android:name="com.example.go4lunchps.ui.home.MapFragment"
-        android:label="@string/title_home"
+        android:name="com.example.go4lunchps.ui.MapFragment"
+        android:label="@string/title_map"
         tools:layout="@layout/fragment_map" />
 
     <fragment
         android:id="@+id/navigation_dashboard"
-        android:name="com.example.go4lunchps.ui.dashboard.DashboardFragment"
-        android:label="@string/title_dashboard"
-        tools:layout="@layout/fragment_dashboard" />
+        android:name="com.example.go4lunchps.ui.ListViewFragment"
+        android:label="@string/title_list"
+        tools:layout="@layout/fragment_listview" />
 
     <fragment
         android:id="@+id/navigation_notifications"
